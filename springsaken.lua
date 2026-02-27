@@ -55,10 +55,10 @@ local Config = {
    AimInstant     = false,      -- bypass smoothing entirely
 
    -- Prediction
-   BasePrediction    = 2.5,     -- multiplier at BaseDistance studs
+   BasePrediction    = 1.0,     -- base prediction strength
    BaseDistance      = 10,      -- reference distance for prediction scaling
    PredictionEnabled = true,    -- toggle velocity prediction on/off
-   PredictionCap     = 15,      -- max prediction multiplier regardless of distance
+   PredictionCap     = 5,       -- max prediction multiplier (hard ceiling)
 
    -- Target filtering
    MaxTargetDistance = 200,     -- ignore targets further than this (studs, 0 = unlimited)
@@ -171,7 +171,7 @@ AimTab:CreateSlider({
    Name = "Base Prediction Multiplier",
    Range = {0, 10},
    Increment = 0.1,
-   CurrentValue = 2.5,
+   CurrentValue = 1.0,
    Flag = "BasePrediction",
    Callback = function(val) Config.BasePrediction = val end,
 })
@@ -189,7 +189,7 @@ AimTab:CreateSlider({
    Name = "Prediction Cap (max multiplier)",
    Range = {1, 50},
    Increment = 0.5,
-   CurrentValue = 15,
+   CurrentValue = 5,
    Flag = "PredictionCap",
    Callback = function(val) Config.PredictionCap = val end,
 })
@@ -219,6 +219,26 @@ AimTab:CreateSlider({
 -- =====================
 
 MiscTab:CreateSection("Utility")
+
+MiscTab:CreateButton({
+   Name = "Recommended Settings",
+   Callback = function()
+      -- Apply recommended settings
+      Config.AimMode        = "HRP"
+      Config.PredictionCap  = 5
+      Config.BasePrediction = 1.0
+      Config.AimSmoothing   = 0.18
+      Config.AimInstant     = false
+      Config.PredictionEnabled = true
+      Rayfield:SaveConfiguration()
+      Rayfield:Notify({
+         Title = "Recommended Settings Applied",
+         Content = "Aim: HRP | Pred Cap: 5 | Base Pred: 1.0",
+         Duration = 3,
+         Image = 4483362458,
+      })
+   end,
+})
 
 MiscTab:CreateButton({
    Name = "Reset Cooldowns",
@@ -416,7 +436,8 @@ RunService.PreRender:Connect(function()
    -- Velocity prediction
    if Config.PredictionEnabled then
       local dist     = (myHRP.Position - target.Position).Magnitude
-      local rawMult  = Config.BasePrediction * (dist / math.max(Config.BaseDistance, 0.001))
+      -- Square root scaling: grows slowly with distance, stays gentle at range
+      local rawMult  = Config.BasePrediction * math.sqrt(dist / math.max(Config.BaseDistance, 0.001))
       local predMult = math.min(rawMult, Config.PredictionCap)
       local vel      = getVelocity(target)
       aimPos         = aimPos + vel * predMult
@@ -481,7 +502,7 @@ local function triggerAim(abilityName, duration, cooldown, enabled)
    lastCF        = nil
    startTracking(target)
 
-   local rawMult  = Config.BasePrediction * (dist / math.max(Config.BaseDistance, 0.001))
+   local rawMult  = Config.BasePrediction * math.sqrt(dist / math.max(Config.BaseDistance, 0.001))
    local predMult = math.min(rawMult, Config.PredictionCap)
    Rayfield:Notify({
       Title = abilityName .. " Locked!",
@@ -557,6 +578,15 @@ end
 PlayerGui.ChildAdded:Connect(function(child)
    if child:IsA("ScreenGui") then task.wait(0.1) hookGui(child) end
 end)
+
+-- =====================
+--   LOAD SAVED CONFIG
+--   Must come AFTER all UI elements are defined so Rayfield
+--   can fire each element Callback with its stored value,
+--   which syncs everything back into Config automatically.
+-- =====================
+
+Rayfield:LoadConfiguration()
 
 -- =====================
 --   WELCOME NOTIFY
