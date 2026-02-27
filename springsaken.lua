@@ -330,11 +330,15 @@ local function getNearestTarget()
    if not myChar then return nil, 0 end
    local myHRP = myChar:FindFirstChild("HumanoidRootPart")
    if not myHRP then return nil, 0 end
-   local myPos  = myHRP.Position
-   local maxD   = Config.MaxTargetDistance > 0 and Config.MaxTargetDistance or math.huge
+   local myPos = myHRP.Position
+   local maxD  = Config.MaxTargetDistance > 0 and Config.MaxTargetDistance or math.huge
 
    local closestHRP, closestDist = nil, maxD
 
+   -- Track player HRPs to skip them during NPC scan
+   local playerHRPs = {}
+
+   -- Scan players
    for _, p in ipairs(Players:GetPlayers()) do
       if p ~= LocalPlayer then
          local char = p.Character
@@ -342,6 +346,7 @@ local function getNearestTarget()
             local hrp = char:FindFirstChild("HumanoidRootPart")
             local hum = char:FindFirstChildOfClass("Humanoid")
             if hrp and hum and hum.Health > 0 then
+               playerHRPs[hrp] = true
                local d = (myPos - hrp.Position).Magnitude
                if d < closestDist then
                   closestDist = d
@@ -352,15 +357,18 @@ local function getNearestTarget()
       end
    end
 
-   for _, obj in ipairs(workspace:GetChildren()) do
-      if obj:IsA("Model") and not playerChars[obj] then
-         local hrp = obj:FindFirstChild("HumanoidRootPart")
-         local hum = obj:FindFirstChildOfClass("Humanoid")
-         if hrp and hum and hum.Health > 0 then
-            local d = (myPos - hrp.Position).Magnitude
-            if d < closestDist then
-               closestDist = d
-               closestHRP  = hrp
+   -- Scan ALL humanoids in workspace (catches NPCs inside folders/nested models)
+   for _, hum in ipairs(workspace:GetDescendants()) do
+      if hum:IsA("Humanoid") and hum.Health > 0 then
+         local char = hum.Parent
+         if char and char ~= myChar then
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if hrp and not playerHRPs[hrp] then
+               local d = (myPos - hrp.Position).Magnitude
+               if d < closestDist then
+                  closestDist = d
+                  closestHRP  = hrp
+               end
             end
          end
       end
