@@ -30,26 +30,42 @@ local Window = Rayfield:CreateWindow({
 --       TABS
 -- =====================
 
-local KillerTab = Window:CreateTab("Killer", 4483362458)
-local MiscTab   = Window:CreateTab("Misc",   4483362458)
+local KillerTab  = Window:CreateTab("Killer",   4483362458)
+local AimTab     = Window:CreateTab("Aim",       4483362458)
+local MiscTab    = Window:CreateTab("Misc",      4483362458)
 
 -- =====================
 --      CONFIG
 -- =====================
 
 local Config = {
+   -- Entanglement [E]
    EntanglementEnabled   = true,
    EntanglementDuration  = 0.9,
    EntanglementCooldown  = 16,
 
+   -- Mass Infection [Q]
    MassInfectionEnabled  = true,
    MassInfectionDuration = 1.9,
    MassInfectionCooldown = 14,
 
-   BasePrediction = 2.5,
-   BaseDistance   = 10,
-   AimSmoothing   = 0.18,
-   AimMode        = "Camera", -- "Camera" or "HRP"
+   -- Aim core
+   AimMode        = "Camera",   -- "Camera" | "HRP"
+   AimSmoothing   = 0.18,       -- lerp factor per frame (0.01 = very smooth, 1 = instant)
+   AimInstant     = false,      -- bypass smoothing entirely
+
+   -- Prediction
+   BasePrediction    = 2.5,     -- multiplier at BaseDistance studs
+   BaseDistance      = 10,      -- reference distance for prediction scaling
+   PredictionEnabled = true,    -- toggle velocity prediction on/off
+   PredictionCap     = 15,      -- max prediction multiplier regardless of distance
+
+   -- Target filtering
+   MaxTargetDistance = 200,     -- ignore targets further than this (studs, 0 = unlimited)
+   TargetBodyPart    = "HRP",   -- "HRP" | "Head" — which part to aim at
+
+   -- HRP-only: vertical aim offset
+   VerticalOffset = 0,          -- studs up/down from target part (e.g. 2 = aim at chest)
 }
 
 -- =====================
@@ -59,14 +75,14 @@ local Config = {
 KillerTab:CreateSection("Entanglement  [E]")
 
 KillerTab:CreateToggle({
-   Name = "Enable Entanglement Auto-Aim",
+   Name = "Enable Auto-Aim",
    CurrentValue = true,
    Flag = "EntanglementEnabled",
    Callback = function(val) Config.EntanglementEnabled = val end,
 })
 
 KillerTab:CreateSlider({
-   Name = "Entanglement Aim Duration",
+   Name = "Aim Duration (s)",
    Range = {0.1, 5},
    Increment = 0.1,
    CurrentValue = 0.9,
@@ -77,14 +93,14 @@ KillerTab:CreateSlider({
 KillerTab:CreateSection("Mass Infection  [Q]")
 
 KillerTab:CreateToggle({
-   Name = "Enable Mass Infection Auto-Aim",
+   Name = "Enable Auto-Aim",
    CurrentValue = true,
    Flag = "MassInfectionEnabled",
    Callback = function(val) Config.MassInfectionEnabled = val end,
 })
 
 KillerTab:CreateSlider({
-   Name = "Mass Infection Aim Duration",
+   Name = "Aim Duration (s)",
    Range = {0.1, 5},
    Increment = 0.1,
    CurrentValue = 1.9,
@@ -92,43 +108,14 @@ KillerTab:CreateSlider({
    Callback = function(val) Config.MassInfectionDuration = val end,
 })
 
-KillerTab:CreateSection("Shared Settings")
-
-KillerTab:CreateSlider({
-   Name = "Base Velocity Prediction",
-   Range = {0, 10},
-   Increment = 0.1,
-   CurrentValue = 2.5,
-   Flag = "BasePrediction",
-   Callback = function(val) Config.BasePrediction = val end,
-})
-
-KillerTab:CreateSlider({
-   Name = "Base Distance (studs)",
-   Range = {1, 50},
-   Increment = 1,
-   CurrentValue = 10,
-   Flag = "BaseDistance",
-   Callback = function(val) Config.BaseDistance = val end,
-})
-
-KillerTab:CreateSlider({
-   Name = "Aim Smoothing",
-   Range = {0.01, 1},
-   Increment = 0.01,
-   CurrentValue = 0.18,
-   Flag = "AimSmoothing",
-   Callback = function(val) Config.AimSmoothing = val end,
-})
-
 -- =====================
---       MISC UI
+--      AIM TAB UI
 -- =====================
 
-MiscTab:CreateSection("Aim Mode")
+AimTab:CreateSection("Mode")
 
-MiscTab:CreateDropdown({
-   Name = "Aim Target",
+AimTab:CreateDropdown({
+   Name = "Aim Mode",
    Options = {"Camera", "HRP"},
    CurrentOption = {"Camera"},
    Flag = "AimMode",
@@ -143,7 +130,109 @@ MiscTab:CreateDropdown({
    end,
 })
 
+AimTab:CreateDropdown({
+   Name = "Target Body Part",
+   Options = {"HRP", "Head"},
+   CurrentOption = {"HRP"},
+   Flag = "TargetBodyPart",
+   Callback = function(val)
+      Config.TargetBodyPart = type(val) == "table" and val[1] or val
+   end,
+})
+
+AimTab:CreateSection("Smoothing")
+
+AimTab:CreateToggle({
+   Name = "Instant Aim (no smoothing)",
+   CurrentValue = false,
+   Flag = "AimInstant",
+   Callback = function(val) Config.AimInstant = val end,
+})
+
+AimTab:CreateSlider({
+   Name = "Aim Smoothing",
+   Range = {0.01, 1},
+   Increment = 0.01,
+   CurrentValue = 0.18,
+   Flag = "AimSmoothing",
+   Callback = function(val) Config.AimSmoothing = val end,
+})
+
+AimTab:CreateSection("Prediction")
+
+AimTab:CreateToggle({
+   Name = "Velocity Prediction",
+   CurrentValue = true,
+   Flag = "PredictionEnabled",
+   Callback = function(val) Config.PredictionEnabled = val end,
+})
+
+AimTab:CreateSlider({
+   Name = "Base Prediction Multiplier",
+   Range = {0, 10},
+   Increment = 0.1,
+   CurrentValue = 2.5,
+   Flag = "BasePrediction",
+   Callback = function(val) Config.BasePrediction = val end,
+})
+
+AimTab:CreateSlider({
+   Name = "Base Distance (studs)",
+   Range = {1, 100},
+   Increment = 1,
+   CurrentValue = 10,
+   Flag = "BaseDistance",
+   Callback = function(val) Config.BaseDistance = val end,
+})
+
+AimTab:CreateSlider({
+   Name = "Prediction Cap (max multiplier)",
+   Range = {1, 50},
+   Increment = 0.5,
+   CurrentValue = 15,
+   Flag = "PredictionCap",
+   Callback = function(val) Config.PredictionCap = val end,
+})
+
+AimTab:CreateSection("Targeting")
+
+AimTab:CreateSlider({
+   Name = "Max Target Distance (studs)",
+   Range = {0, 500},
+   Increment = 5,
+   CurrentValue = 200,
+   Flag = "MaxTargetDistance",
+   Callback = function(val) Config.MaxTargetDistance = val end,
+})
+
+AimTab:CreateSlider({
+   Name = "Vertical Aim Offset",
+   Range = {-5, 5},
+   Increment = 0.1,
+   CurrentValue = 0,
+   Flag = "VerticalOffset",
+   Callback = function(val) Config.VerticalOffset = val end,
+})
+
+-- =====================
+--       MISC UI
+-- =====================
+
 MiscTab:CreateSection("Utility")
+
+MiscTab:CreateButton({
+   Name = "Reset Cooldowns",
+   Callback = function()
+      cooldowns.Entanglement  = 0
+      cooldowns.MassInfection = 0
+      Rayfield:Notify({
+         Title = "Cooldowns Reset",
+         Content = "Both abilities are ready.",
+         Duration = 2,
+         Image = 4483362458,
+      })
+   end,
+})
 
 MiscTab:CreateButton({
    Name = "Rejoin",
@@ -162,19 +251,17 @@ MiscTab:CreateLabel("Forsaken — Entanglement [E] & Mass Infection [Q]")
 
 local aimActive     = false
 local aimEndTime    = 0
-local currentTarget = nil  -- cached HumanoidRootPart
+local currentTarget = nil
 
--- Velocity tracking: only store the ONE active target's prev position
 local targetPrevPos  = nil
 local targetPrevTime = 0
 
--- Per-ability cooldown timestamps
 local cooldowns = {
    Entanglement  = 0,
    MassInfection = 0,
 }
 
--- Cache of player characters for fast NPC exclusion (avoids per-frame GetPlayers())
+-- Player character cache (avoids GetPlayers() in hot paths)
 local playerChars = {}
 Players.PlayerAdded:Connect(function(p)
    p.CharacterAdded:Connect(function(c) playerChars[c] = true end)
@@ -190,7 +277,6 @@ end
 
 -- =====================
 --   VELOCITY TRACKING
---   (Heartbeat — only runs when aiming)
 -- =====================
 
 local heartbeatConn = nil
@@ -202,8 +288,8 @@ local function startTracking(hrp)
    heartbeatConn = RunService.Heartbeat:Connect(function()
       if not aimActive or not hrp or not hrp.Parent then
          heartbeatConn:Disconnect()
-         heartbeatConn  = nil
-         targetPrevPos  = nil
+         heartbeatConn = nil
+         targetPrevPos = nil
          return
       end
       targetPrevPos  = hrp.Position
@@ -223,8 +309,20 @@ local function getVelocity(hrp)
 end
 
 -- =====================
+--   TARGET PART RESOLVE
+-- =====================
+
+local function getTargetPosition(hrp)
+   local part = hrp
+   if Config.TargetBodyPart == "Head" then
+      local head = hrp.Parent and hrp.Parent:FindFirstChild("Head")
+      if head then part = head end
+   end
+   return part.Position + Vector3.new(0, Config.VerticalOffset, 0)
+end
+
+-- =====================
 --   NEAREST TARGET
---   (called once per trigger, not every frame)
 -- =====================
 
 local function getNearestTarget()
@@ -232,11 +330,11 @@ local function getNearestTarget()
    if not myChar then return nil, 0 end
    local myHRP = myChar:FindFirstChild("HumanoidRootPart")
    if not myHRP then return nil, 0 end
-   local myPos = myHRP.Position
+   local myPos  = myHRP.Position
+   local maxD   = Config.MaxTargetDistance > 0 and Config.MaxTargetDistance or math.huge
 
-   local closestHRP, closestDist = nil, math.huge
+   local closestHRP, closestDist = nil, maxD
 
-   -- Players
    for _, p in ipairs(Players:GetPlayers()) do
       if p ~= LocalPlayer then
          local char = p.Character
@@ -254,7 +352,6 @@ local function getNearestTarget()
       end
    end
 
-   -- NPCs: iterate workspace children only (not full descendants — much faster)
    for _, obj in ipairs(workspace:GetChildren()) do
       if obj:IsA("Model") and not playerChars[obj] then
          local hrp = obj:FindFirstChild("HumanoidRootPart")
@@ -273,23 +370,18 @@ local function getNearestTarget()
 end
 
 -- =====================
---   AIM LOOP
---   PreRender = runs right before each frame is drawn
---   (tightest possible timing for camera control)
+--   AIM LOOP (PreRender)
 -- =====================
 
-local lastCF       = nil
-local baseDistSafe = 0.001 -- avoids repeated math.max calls in hot loop
+local lastCF = nil
 
-RunService.PreRender:Connect(function(dt)
+RunService.PreRender:Connect(function()
    if not aimActive then
-      if lastCF then lastCF = nil end
+      lastCF = nil
       return
    end
 
    local now = tick()
-
-   -- Expire check
    if now > aimEndTime then
       aimActive     = false
       currentTarget = nil
@@ -310,18 +402,24 @@ RunService.PreRender:Connect(function(dt)
    local myHRP = myChar:FindFirstChild("HumanoidRootPart")
    if not myHRP then return end
 
-   -- Velocity prediction scaled by distance
-   local tPos     = target.Position
-   local dist     = (myHRP.Position - tPos).Magnitude
-   local predMult = Config.BasePrediction * (dist / (Config.BaseDistance + baseDistSafe))
-   local vel      = getVelocity(target)
-   local predicted = tPos + vel * predMult
+   -- Resolve aim point with body part + vertical offset
+   local aimPos = getTargetPosition(target)
 
-   local smoothing = Config.AimSmoothing
+   -- Velocity prediction
+   if Config.PredictionEnabled then
+      local dist     = (myHRP.Position - target.Position).Magnitude
+      local rawMult  = Config.BasePrediction * (dist / math.max(Config.BaseDistance, 0.001))
+      local predMult = math.min(rawMult, Config.PredictionCap)
+      local vel      = getVelocity(target)
+      aimPos         = aimPos + vel * predMult
+   end
+
+   local smoothing = Config.AimInstant and 1 or Config.AimSmoothing
 
    if Config.AimMode == "Camera" then
       local camPos = Camera.CFrame.Position
-      local dir    = predicted - camPos
+      -- XZ only: flatten both positions to the same Y before computing direction
+      local dir = Vector3.new(aimPos.X - camPos.X, 0, aimPos.Z - camPos.Z)
       if dir.Magnitude < 0.001 then return end
       local targetCF = CFrame.lookAt(camPos, camPos + dir.Unit)
       local newCF    = lastCF and lastCF:Lerp(targetCF, smoothing) or targetCF
@@ -330,11 +428,11 @@ RunService.PreRender:Connect(function(dt)
 
    elseif Config.AimMode == "HRP" then
       local origin = myHRP.Position
-      local dir    = Vector3.new(predicted.X - origin.X, 0, predicted.Z - origin.Z)
+      local dir    = Vector3.new(aimPos.X - origin.X, 0, aimPos.Z - origin.Z)
       if dir.Magnitude < 0.001 then return end
-      local targetCF  = CFrame.lookAt(origin, origin + dir.Unit)
-      myHRP.CFrame    = myHRP.CFrame:Lerp(targetCF, smoothing)
-      lastCF          = nil -- not needed for HRP mode
+      local targetCF = CFrame.lookAt(origin, origin + dir.Unit)
+      myHRP.CFrame   = myHRP.CFrame:Lerp(targetCF, smoothing)
+      lastCF         = nil
    end
 end)
 
@@ -359,19 +457,28 @@ local function triggerAim(abilityName, duration, cooldown, enabled)
    cooldowns[abilityName] = now
 
    local target, dist = getNearestTarget()
-   if not target then return end
+   if not target then
+      Rayfield:Notify({
+         Title = abilityName,
+         Content = "No valid target found.",
+         Duration = 2,
+         Image = 4483362458,
+      })
+      return
+   end
 
    currentTarget = target
    aimActive     = true
    aimEndTime    = now + duration
    lastCF        = nil
-
    startTracking(target)
 
-   local pred = Config.BasePrediction * (dist / (Config.BaseDistance + baseDistSafe))
+   local rawMult  = Config.BasePrediction * (dist / math.max(Config.BaseDistance, 0.001))
+   local predMult = math.min(rawMult, Config.PredictionCap)
    Rayfield:Notify({
       Title = abilityName .. " Locked!",
-      Content = string.format("%.0f studs | Pred: %.2fx | %s", dist, pred, Config.AimMode),
+      Content = string.format("%.0f studs | Pred: %.2fx | %s | %s",
+         dist, predMult, Config.AimMode, Config.TargetBodyPart),
       Duration = 2,
       Image = 4483362458,
    })
@@ -394,7 +501,7 @@ end)
 --   GUI BUTTON DETECTION
 -- =====================
 
-local hookedButtons = {} -- prevent double-hooking same button
+local hookedButtons = {}
 
 local function identifyAbility(obj)
    local function check(o)
@@ -407,7 +514,6 @@ local function identifyAbility(obj)
          if t:find("mass.?infection") then return "MassInfection" end
       end
    end
-
    local found = check(obj)
    if found then return found end
    for _, child in ipairs(obj:GetDescendants()) do
@@ -420,7 +526,6 @@ local function hookButton(obj)
    if hookedButtons[obj] then return end
    if not (obj:IsA("TextButton") or obj:IsA("ImageButton")) then return end
    hookedButtons[obj] = true
-
    obj.MouseButton1Click:Connect(function()
       local ability = identifyAbility(obj)
       if ability == "Entanglement" then
@@ -429,32 +534,20 @@ local function hookButton(obj)
          triggerAim("MassInfection", Config.MassInfectionDuration, Config.MassInfectionCooldown, Config.MassInfectionEnabled)
       end
    end)
-
-   -- Clean up hook reference when button is destroyed
    obj.Destroying:Connect(function() hookedButtons[obj] = nil end)
 end
 
 local function hookGui(gui)
-   for _, obj in ipairs(gui:GetDescendants()) do
-      hookButton(obj)
-   end
-   gui.DescendantAdded:Connect(function(obj)
-      task.wait()
-      hookButton(obj)
-   end)
+   for _, obj in ipairs(gui:GetDescendants()) do hookButton(obj) end
+   gui.DescendantAdded:Connect(function(obj) task.wait() hookButton(obj) end)
 end
 
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
-
 for _, gui in ipairs(PlayerGui:GetChildren()) do
    if gui:IsA("ScreenGui") then hookGui(gui) end
 end
-
 PlayerGui.ChildAdded:Connect(function(child)
-   if child:IsA("ScreenGui") then
-      task.wait(0.1)
-      hookGui(child)
-   end
+   if child:IsA("ScreenGui") then task.wait(0.1) hookGui(child) end
 end)
 
 -- =====================
